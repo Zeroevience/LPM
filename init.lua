@@ -45,11 +45,23 @@ local function install(repo)
     local pkgPath = "lpm/packages/"..pkgName
 
     if isfolder(pkgPath) then
-        print("[LPM] Already installed:", repo)
-        return
-    end
+        print("[LPM] Updating:", repo)
 
-    print("[LPM] Installing:", repo)
+        local function deleteFolder(path)
+            for _, file in ipairs(listfiles(path)) do
+                if isfolder(file) then
+                    deleteFolder(file)
+                else
+                    delfile(file)
+                end
+            end
+            delfolder(path)
+        end
+
+        deleteFolder(pkgPath)
+    else
+        print("[LPM] Installing:", repo)
+    end
 
     local manifestData = httpGet(githubRaw(repo, branch, "pkg.json"))
     local manifest = HttpService:JSONDecode(manifestData)
@@ -67,7 +79,7 @@ local function install(repo)
         print("[LPM] +", file)
     end
 
-    print("[LPM] Installed:", repo)
+    print("[LPM] Done:", repo)
 end
 
 local function installDefaultPackages()
