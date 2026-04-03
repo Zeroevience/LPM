@@ -1,15 +1,10 @@
---// LPM CORE (FINAL FIXED)
 
 local HttpService = game:GetService("HttpService")
 
 local LPM_URL = "https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/init.lua"
 local LOCAL_PATH = "lpm/init.lua"
-
--- ensure folders
 if not isfolder("lpm") then makefolder("lpm") end
 if not isfolder("lpm/packages") then makefolder("lpm/packages") end
-
--- helpers
 local function httpGet(url)
     local res = request({Url = url, Method = "GET"})
     if not res or not res.Body then
@@ -25,8 +20,6 @@ end
 local function safeName(repo)
     return repo:gsub("/", "_")
 end
-
--- auto update core
 local function autoUpdate()
     local success, remote = pcall(httpGet, LPM_URL)
     if not success or not remote then return end
@@ -43,10 +36,8 @@ end
 
 autoUpdate()
 
--- cache
 local loaded = {}
 
--- install
 local function install(repo)
     assert(repo, "[LPM] Missing repo")
 
@@ -67,12 +58,10 @@ local function install(repo)
     makefolder(pkgPath)
     writefile(pkgPath.."/pkg.json", manifestData)
 
-    -- dependencies
     for dep, _ in pairs(manifest.dependencies or {}) do
         install(dep)
     end
 
-    -- files
     for _, file in ipairs(manifest.files or {}) do
         local content = httpGet(githubRaw(repo, branch, file))
         writefile(pkgPath.."/"..file, content)
@@ -82,7 +71,6 @@ local function install(repo)
     print("[LPM] Installed:", repo)
 end
 
--- require
 local function requirePkg(repo)
     assert(repo, "[LPM] Missing repo")
 
@@ -114,7 +102,6 @@ local function requirePkg(repo)
     return result
 end
 
--- update
 local function deleteFolder(path)
     for _, file in ipairs(listfiles(path)) do
         if isfolder(file) then
@@ -137,7 +124,6 @@ local function update(repo)
     install(repo)
 end
 
--- remove
 local function remove(repo)
     local pkgName = safeName(repo)
     local path = "lpm/packages/"..pkgName
@@ -150,7 +136,6 @@ local function remove(repo)
     end
 end
 
--- MAIN FUNCTION (IMPORTANT)
 local function lpm(action, repo)
     if action == "install" then
         return install(repo)
