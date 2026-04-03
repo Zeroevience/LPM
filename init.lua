@@ -1,49 +1,58 @@
---// LPM CORE (no _G, returns function)
+--// LPM CORE (FINAL FIXED)
 
 local HttpService = game:GetService("HttpService")
 
-local LPM_URL   = "https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/init.lua"
-local LOCALPATH = "lpm/init.lua"
+local LPM_URL = "https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/init.lua"
+local LOCAL_PATH = "lpm/init.lua"
+
+-- ensure folders
+if not isfolder("lpm") then makefolder("lpm") end
+if not isfolder("lpm/packages") then makefolder("lpm/packages") end
 
 -- helpers
 local function httpGet(url)
-    local r = request({Url = url, Method = "GET"})
-    if not r or not r.Body then return nil end
-    return r.Body
+    local res = request({Url = url, Method = "GET"})
+    if not res or not res.Body then
+        error("[LPM] HTTP failed: "..url)
+    end
+    return res.Body
 end
 
-local function githubRaw(repo, ref, path)
-    return "https://raw.githubusercontent.com/"..repo.."/"..ref.."/"..path
+local function githubRaw(repo, branch, path)
+    return "https://raw.githubusercontent.com/"..repo.."/"..branch.."/"..path
 end
 
 local function safeName(repo)
     return repo:gsub("/", "_")
 end
 
--- ensure folders
-if not isfolder("lpm") then makefolder("lpm") end
-if not isfolder("lpm/packages") then makefolder("lpm/packages") end
+-- auto update core
+local function autoUpdate()
+    local success, remote = pcall(httpGet, LPM_URL)
+    if not success or not remote then return end
 
--- auto-update core (silent)
-do
-    local remote = httpGet(LPM_URL)
-    if remote and isfile(LOCALPATH) then
-        local localData = readfile(LOCALPATH)
+    if isfile(LOCAL_PATH) then
+        local localData = readfile(LOCAL_PATH)
+
         if localData ~= remote then
-            writefile(LOCALPATH, remote)
-            print("[LPM] Core updated.")
+            writefile(LOCAL_PATH, remote)
+            print("[LPM] Core updated!")
         end
     end
 end
+
+autoUpdate()
 
 -- cache
 local loaded = {}
 
 -- install
 local function install(repo)
-    local ref     = "main"
-    local name    = safeName(repo)
-    local pkgPath = "lpm/packages/"..name
+    assert(repo, "[LPM] Missing repo")
+
+    local branch = "main"
+    local pkgName = safeName(repo)
+    local pkgPath = "lpm/packages/"..pkgName
 
     if isfolder(pkgPath) then
         print("[LPM] Already installed:", repo)
@@ -52,30 +61,22 @@ local function install(repo)
 
     print("[LPM] Installing:", repo)
 
-    local manifestRaw = httpGet(githubRaw(repo, ref, "pkg.json"))
-    if not manifestRaw then
-        error("[LPM] Failed to fetch pkg.json for "..repo)
-    end
-
-    local manifest = HttpService:JSONDecode(manifestRaw)
+    local manifestData = httpGet(githubRaw(repo, branch, "pkg.json"))
+    local manifest = HttpService:JSONDecode(manifestData)
 
     makefolder(pkgPath)
-    writefile(pkgPath.."/pkg.json", manifestRaw)
+    writefile(pkgPath.."/pkg.json", manifestData)
 
-    -- deps
+    -- dependencies
     for dep, _ in pairs(manifest.dependencies or {}) do
         install(dep)
     end
 
     -- files
     for _, file in ipairs(manifest.files or {}) do
-        local content = httpGet(githubRaw(repo, ref, file))
-        if content then
-            writefile(pkgPath.."/"..file, content)
-            print("[LPM] +", file)
-        else
-            warn("[LPM] Failed:", file)
-        end
+        local content = httpGet(githubRaw(repo, branch, file))
+        writefile(pkgPath.."/"..file, content)
+        print("[LPM] +", file)
     end
 
     print("[LPM] Installed:", repo)
@@ -83,43 +84,54 @@ end
 
 -- require
 local function requirePkg(repo)
-    local name = safeName(repo)
+    assert(repo, "[LPM] Missing repo")
 
-    if loaded[name] then
-        return loaded[name]
+    local pkgName = safeName(repo)
+
+    if loaded[pkgName] then
+        return loaded[pkgName]
     end
 
-    local base = "lpm/packages/"..name.."/"
+    local base = "lpm/packages/"..pkgName.."/"
+
     if not isfolder(base) then
-        error("[LPM] Not installed: "..repo)
+        error("[LPM] Package not installed: "..repo)
     end
 
     local manifest = HttpService:JSONDecode(readfile(base.."pkg.json"))
-    local entry    = manifest.entry or "init.lua"
+    local entry = manifest.entry or "init.lua"
 
-    local src = readfile(base..entry)
-    local fn, err = loadstring(src)
-    if not fn then error("[LPM] Load error: "..err) end
+    local source = readfile(base..entry)
+    local fn, err = loadstring(source)
+
+    if not fn then
+        error("[LPM] Load error: "..err)
+    end
 
     local result = fn()
-    loaded[name] = result
+    loaded[pkgName] = result
+
     return result
 end
 
 -- update
+local function deleteFolder(path)
+    for _, file in ipairs(listfiles(path)) do
+        if isfolder(file) then
+            deleteFolder(file)
+        else
+            delfile(file)
+        end
+    end
+    delfolder(path)
+end
+
 local function update(repo)
-    local name = safeName(repo)
-    local path = "lpm/packages/"..name
+    local pkgName = safeName(repo)
+    local path = "lpm/packages/"..pkgName
 
     if isfolder(path) then
-        -- delete recursively
-        local function del(p)
-            for _, f in ipairs(listfiles(p)) do
-                if isfolder(f) then del(f) else delfile(f) end
-            end
-            delfolder(p)
-        end
-        del(path)
+        deleteFolder(path)
     end
 
     install(repo)
@@ -127,38 +139,37 @@ end
 
 -- remove
 local function remove(repo)
-    local name = safeName(repo)
-    local path = "lpm/packages/"..name
+    local pkgName = safeName(repo)
+    local path = "lpm/packages/"..pkgName
 
-    if not isfolder(path) then
+    if isfolder(path) then
+        deleteFolder(path)
+        print("[LPM] Removed:", repo)
+    else
         warn("[LPM] Not installed:", repo)
-        return
     end
-
-    local function del(p)
-        for _, f in ipairs(listfiles(p)) do
-            if isfolder(f) then del(f) else delfile(f) end
-        end
-        delfolder(p)
-    end
-    del(path)
-
-    print("[LPM] Removed:", repo)
 end
 
--- exported function
+-- MAIN FUNCTION (IMPORTANT)
 local function lpm(action, repo)
     if action == "install" then
         return install(repo)
+
     elseif action == "require" then
         return requirePkg(repo)
+
     elseif action == "update" then
         return update(repo)
+
     elseif action == "remove" then
         return remove(repo)
+
     else
         error("[LPM] Unknown action: "..tostring(action))
     end
 end
 
+print("[LPM] Loaded")
+
+-- THIS FIXES YOUR ERROR
 return lpm
