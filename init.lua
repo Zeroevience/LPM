@@ -25,17 +25,32 @@ end
 
 local function autoUpdate()
     local success, remote = pcall(httpGet, LPM_URL)
-    if not success or not remote then return end
+    if not success or not remote then return false end
+
     if isfile(LOCAL_PATH) then
         local localData = readfile(LOCAL_PATH)
         if localData ~= remote then
             writefile(LOCAL_PATH, remote)
-            print("[LPM] Core updated!")
+            print("[LPM] Core updated, reloading...")
+            return loadstring(remote)()
         end
     end
+
+    return false
 end
 
 local loaded = {}
+
+local function deleteFolder(path)
+    for _, file in ipairs(listfiles(path)) do
+        if isfolder(file) then
+            deleteFolder(file)
+        else
+            delfile(file)
+        end
+    end
+    delfolder(path)
+end
 
 local function install(repo)
     assert(repo, "[LPM] Missing repo")
@@ -46,18 +61,6 @@ local function install(repo)
 
     if isfolder(pkgPath) then
         print("[LPM] Updating:", repo)
-
-        local function deleteFolder(path)
-            for _, file in ipairs(listfiles(path)) do
-                if isfolder(file) then
-                    deleteFolder(file)
-                else
-                    delfile(file)
-                end
-            end
-            delfolder(path)
-        end
-
         deleteFolder(pkgPath)
     else
         print("[LPM] Installing:", repo)
@@ -86,32 +89,17 @@ local function installDefaultPackages()
     print("[LPM] Loading default packages...")
 
     local success, data = pcall(httpGet, DEFAULT_PKGS_URL)
-    if not success then
-        warn("[LPM] Failed to fetch defaultpkgs.json")
-        return
-    end
+    if not success then return end
 
     local ok, json = pcall(HttpService.JSONDecode, HttpService, data)
-    if not ok then
-        warn("[LPM] Invalid JSON")
-        return
-    end
+    if not ok then return end
 
-    if not json.dft then
-        warn("[LPM] No default packages found")
-        return
-    end
+    if not json.dft then return end
 
     for repo, _ in pairs(json.dft) do
-        print("[LPM] Installing default:", repo)
-
-        local ok2, err = pcall(function()
+        pcall(function()
             install(repo)
         end)
-
-        if not ok2 then
-            warn("[LPM] Failed:", repo, err)
-        end
     end
 
     print("[LPM] Default packages done")
@@ -148,17 +136,6 @@ local function requirePkg(repo)
     return result
 end
 
-local function deleteFolder(path)
-    for _, file in ipairs(listfiles(path)) do
-        if isfolder(file) then
-            deleteFolder(file)
-        else
-            delfile(file)
-        end
-    end
-    delfolder(path)
-end
-
 local function update(repo)
     local pkgName = safeName(repo)
     local path = "lpm/packages/"..pkgName
@@ -177,22 +154,27 @@ local function remove(repo)
     if isfolder(path) then
         deleteFolder(path)
         print("[LPM] Removed:", repo)
-    else
-        warn("[LPM] Not installed:", repo)
     end
 end
 
 local function lpm(action, repo)
-    autoUpdate()
+    local new = autoUpdate()
+    if new then
+        return new(action, repo)
+    end
 
     if action == "install" then
         return install(repo)
+
     elseif action == "require" then
         return requirePkg(repo)
+
     elseif action == "update" then
         return update(repo)
+
     elseif action == "remove" then
         return remove(repo)
+
     else
         error("[LPM] Unknown action: "..tostring(action))
     end
