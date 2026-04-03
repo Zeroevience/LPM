@@ -39,59 +39,100 @@ local loaded = {}
 
 local function install(repo)
     assert(repo, "[LPM] Missing repo")
+
     local branch = "main"
     local pkgName = safeName(repo)
     local pkgPath = "lpm/packages/"..pkgName
-    if isfolder(pkgPath) then return end
+
+    if isfolder(pkgPath) then
+        print("[LPM] Already installed:", repo)
+        return
+    end
+
     print("[LPM] Installing:", repo)
+
     local manifestData = httpGet(githubRaw(repo, branch, "pkg.json"))
     local manifest = HttpService:JSONDecode(manifestData)
+
     makefolder(pkgPath)
     writefile(pkgPath.."/pkg.json", manifestData)
+
     for dep, _ in pairs(manifest.dependencies or {}) do
         install(dep)
     end
+
     for _, file in ipairs(manifest.files or {}) do
         local content = httpGet(githubRaw(repo, branch, file))
         writefile(pkgPath.."/"..file, content)
         print("[LPM] +", file)
     end
+
     print("[LPM] Installed:", repo)
 end
 
 local function installDefaultPackages()
+    print("[LPM] Loading default packages...")
+
     local success, data = pcall(httpGet, DEFAULT_PKGS_URL)
-    if not success then return end
+    if not success then
+        warn("[LPM] Failed to fetch defaultpkgs.json")
+        return
+    end
+
     local ok, json = pcall(HttpService.JSONDecode, HttpService, data)
-    if not ok then return end
-    if not json.dft then return end
+    if not ok then
+        warn("[LPM] Invalid JSON")
+        return
+    end
+
+    if not json.dft then
+        warn("[LPM] No default packages found")
+        return
+    end
+
     for repo, _ in pairs(json.dft) do
-        pcall(function()
+        print("[LPM] Installing default:", repo)
+
+        local ok2, err = pcall(function()
             install(repo)
         end)
+
+        if not ok2 then
+            warn("[LPM] Failed:", repo, err)
+        end
     end
-    print("[LPM] Default packages loaded")
+
+    print("[LPM] Default packages done")
 end
 
 local function requirePkg(repo)
     assert(repo, "[LPM] Missing repo")
+
     local pkgName = safeName(repo)
+
     if loaded[pkgName] then
         return loaded[pkgName]
     end
+
     local base = "lpm/packages/"..pkgName.."/"
+
     if not isfolder(base) then
         error("[LPM] Package not installed: "..repo)
     end
+
     local manifest = HttpService:JSONDecode(readfile(base.."pkg.json"))
     local entry = manifest.entry or "init.lua"
+
     local source = readfile(base..entry)
     local fn, err = loadstring(source)
+
     if not fn then
         error("[LPM] Load error: "..err)
     end
+
     local result = fn()
     loaded[pkgName] = result
+
     return result
 end
 
@@ -109,15 +150,18 @@ end
 local function update(repo)
     local pkgName = safeName(repo)
     local path = "lpm/packages/"..pkgName
+
     if isfolder(path) then
         deleteFolder(path)
     end
+
     install(repo)
 end
 
 local function remove(repo)
     local pkgName = safeName(repo)
     local path = "lpm/packages/"..pkgName
+
     if isfolder(path) then
         deleteFolder(path)
         print("[LPM] Removed:", repo)
@@ -128,6 +172,7 @@ end
 
 local function lpm(action, repo)
     autoUpdate()
+
     if action == "install" then
         return install(repo)
     elseif action == "require" then
