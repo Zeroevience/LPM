@@ -1,22 +1,37 @@
---// LPM CORE
+--// LPM CORE (AUTO-UPDATING)
 
 local HttpService = game:GetService("HttpService")
 
+local LPM_URL = "https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/init.lua"
+local LOCAL_PATH = "lpm/init.lua"
+
+-- auto update
+local function httpGet(url)
+    local res = request({Url = url, Method = "GET"})
+    return res and res.Body or nil
+end
+
+local function autoUpdate()
+    local success, remote = pcall(httpGet, LPM_URL)
+    if not success or not remote then return end
+
+    if isfile(LOCAL_PATH) then
+        local localData = readfile(LOCAL_PATH)
+
+        if localData ~= remote then
+            writefile(LOCAL_PATH, remote)
+            print("[LPM] Core updated!")
+        end
+    end
+end
+
+-- init folders
 if not isfolder("lpm") then makefolder("lpm") end
 if not isfolder("lpm/packages") then makefolder("lpm/packages") end
 
-local loaded = {}
+autoUpdate()
 
-local function httpGet(url)
-    local res = request({
-        Url = url,
-        Method = "GET"
-    })
-    if not res or not res.Body then
-        error("[LPM] HTTP failed: "..url)
-    end
-    return res.Body
-end
+local loaded = {}
 
 local function githubRaw(repo, branch, path)
     return "https://raw.githubusercontent.com/"..repo.."/"..branch.."/"..path
@@ -40,19 +55,27 @@ local function install(repo)
     print("[LPM] Installing:", repo)
 
     local manifestData = httpGet(githubRaw(repo, branch, "pkg.json"))
+    if not manifestData then
+        error("[LPM] Failed to fetch pkg.json")
+    end
+
     local manifest = HttpService:JSONDecode(manifestData)
 
     makefolder(pkgPath)
     writefile(pkgPath.."/pkg.json", manifestData)
 
+    -- dependencies
     for dep, _ in pairs(manifest.dependencies or {}) do
         install(dep)
     end
 
+    -- files
     for _, file in ipairs(manifest.files or {}) do
         local content = httpGet(githubRaw(repo, branch, file))
-        writefile(pkgPath.."/"..file, content)
-        print("[LPM] +", file)
+        if content then
+            writefile(pkgPath.."/"..file, content)
+            print("[LPM] +", file)
+        end
     end
 
     print("[LPM] Installed:", repo)
@@ -69,7 +92,7 @@ local function requirePkg(repo)
     local base = "lpm/packages/"..pkgName.."/"
 
     if not isfolder(base) then
-        error("[LPM] Package not installed: "..repo)
+        error("[LPM] Not installed: "..repo)
     end
 
     local manifest = HttpService:JSONDecode(readfile(base.."pkg.json"))
@@ -120,7 +143,7 @@ local function remove(repo)
     end
 end
 
--- GLOBAL API
+-- API
 _G.lpm = function(action, repo)
     if action == "install" then
         install(repo)
@@ -139,4 +162,4 @@ _G.lpm = function(action, repo)
     end
 end
 
-print("[LPM] Loaded")
+print("[LPM] Loaded (auto-update enabled)")
