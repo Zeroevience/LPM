@@ -25,22 +25,15 @@ local lpm = loadstring(readfile("lpm/init.lua"))()
 
 # 🛠️ Installation (One-Time Setup)
 
-Run this once:
+~~Run this once:~~
 
 ```lua
-local URL = "https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/init.lua"
-
-if not isfolder("lpm") then makefolder("lpm") end
-if not isfolder("lpm/packages") then makefolder("lpm/packages") end
-
-writefile("lpm/init.lua", request({
-    Url = URL,
-    Method = "GET"
-}).Body)
-
-print("[LPM] Installed!")
 ```
 
+Updated installer:
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/uiinstaller.js")
+```
 ---
 
 # ⚡ Loading LPM
