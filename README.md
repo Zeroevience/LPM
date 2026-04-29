@@ -32,7 +32,7 @@ local lpm = loadstring(readfile("lpm/init.lua"))()
 
 Updated installer:
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/uiinstaller.js")
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Zeroevience/LPM/refs/heads/main/uiinstaller.js",true))()
 ```
 ---
 
